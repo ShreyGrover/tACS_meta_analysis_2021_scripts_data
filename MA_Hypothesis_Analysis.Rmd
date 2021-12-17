@@ -1,0 +1,250 @@
+---
+title: "Hypothesis-Based Results"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  html_notebook: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r packages,warning=TRUE, include=FALSE}
+library("tidyverse")
+library("metafor")
+library("robumeta")
+library("readxl")
+library("writexl")
+```
+
+
+```{r data download and subsetting, include=FALSE}
+directory = "/Users/renatafayz/Documents/tACS_MetaAnalysis"
+mlm.data <- read_excel(paste0(directory, "/Data_for_analysis/Analysis_Hypothesis.xlsx"))
+
+# Performance, RT and clinical datasets
+
+mlm.clin <- mlm.data[mlm.data$population == 'Clinical',]
+
+# uncomment to test w/o clinical studies
+#mlm.data <- mlm.data[mlm.data$population != "Clinical",]
+
+mlm.perf <- mlm.data[mlm.data$dv == 'Performance',]
+mlm.rt <- mlm.data[mlm.data$dv == 'RT',]
+```
+
+## Overall Effect of tACS 
+
+Pool effects using robu() function from robumeta package to compute overall effects for All, Performance, and RT measures
+
+*All* 
+
+```{r overall effect All, echo=FALSE}
+model_intercept <- robu(formula = y ~ 1, data = mlm.data, studynum = ID, var.eff.size = v, rho = 0.8, small = FALSE)
+print(model_intercept)
+
+sensitivity(model_intercept)
+```
+
+*Outliers All*
+
+For identification of outliers use rstudent() function from metafor package (robumeta doesn't have appropriate solution). 
+
+```{r overall effect All (outliers removed), echo=FALSE}
+
+model_rma <- rma.uni(y, v, weights = model_intercept$data.full$r.weights, data=mlm.data)
+rstud <- rstudent(model_rma)
+outliers <- model_intercept$data$experiment[abs(rstud$z) >= 1.96]
+if(sum(abs(rstud$z) >= 1.96) !=0) {
+  model_out <- robu(formula = y ~ 1, data = mlm.data[abs(rstud$z)<1.96,], studynum = ID, var.eff.size = v, rho = .8, small = FALSE)
+}
+print(outliers)
+print(model_out)
+
+```
+
+*Performance*
+
+```{r overall effect Performance, echo=FALSE}
+model_intercept <- robu(formula = y ~ 1, data = mlm.perf, studynum = ID, var.eff.size = v, rho = 0.8, small = FALSE)
+print(model_intercept)
+
+sensitivity(model_intercept)
+```
+
+*Outliers Performance*
+
+```{r overall effect Performance (outliers removed), echo=FALSE}
+
+model_rma <- rma.uni(y, v, weights = model_intercept$data.full$r.weights, data=mlm.perf)
+rstud <- rstudent(model_rma)
+outliers <- model_intercept$data$experiment[abs(rstud$z) >= 1.96]
+if(sum(abs(rstud$z) >= 1.96) !=0) {
+  model_out <- robu(formula = y ~ 1, data = mlm.perf[abs(rstud$z)<1.96,], studynum = ID, var.eff.size = v, rho = .8, small = FALSE)
+}
+print(outliers)
+print(model_out)
+
+```
+
+*Reaction Time*
+
+```{r overall effect RT, echo=FALSE}
+model_intercept <- robu(formula = y ~ 1, data = mlm.rt, studynum = ID, var.eff.size = v, rho =.8, small = TRUE)
+print(model_intercept)
+
+sensitivity(model_intercept)
+```
+
+*Outliers RT*
+
+```{r overall effect RT (outliers removed), echo=FALSE}
+
+model_rma <- rma.uni(y, v, weights = model_intercept$data.full$r.weights, data=mlm.rt)
+rstud <- rstudent(model_rma)
+outliers <- model_intercept$data$experiment[abs(rstud$z) >= 1.96]
+if(sum(abs(rstud$z) >= 1.96) !=0) {
+  model_out <- robu(formula = y ~ 1, data = mlm.rt[abs(rstud$z)<1.96,], studynum = ID, var.eff.size = v, rho = .8, small = TRUE)
+}
+print(outliers)
+print(model_out)
+
+```
+
+## Overall Effects of tACS by Domains 
+
+*Domains | All* 
+
+```{r domains All, echo=FALSE}
+# Fit RVE intercept model
+
+domains = c("Working Memory", "Long-Term Memory", "Attention", "Executive Control", "Intelligence", "Motor Learning", "Motor Memory", "Learning", "Decision-Making")
+
+effects_robu = data.frame(matrix(ncol = 9, nrow = 8))
+model = list()
+
+for(d in 1:length(domains)) {
+  # fit RVE model for each domain 
+  model[[d]] <- robu(formula = y ~ 1, 
+                        data = mlm.data[mlm.data$domain==domains[d],],
+                        studynum = ID, 
+                        var.eff.size = v, 
+                        rho = .8, 
+                        small = TRUE)
+  # extract data from the model
+  effects_robu[d] <- c(model[[d]]$reg_table$b.r,   # effect size
+                       model[[d]]$reg_table$prob,  # p-value
+                       model[[d]]$reg_table$CI.L,  # CI lower bound
+                       model[[d]]$reg_table$CI.U,  # CI upper bound
+                       model[[d]]$mod_info$I.2[1], # I squared
+                       model[[d]]$reg_table$dfs,   # degrees of freedom
+                       model[[d]]$N,               # number of studies (N)
+                       model[[d]]$M)               # number of effects (k)
+}
+
+colnames(effects_robu) <- domains
+rownames(effects_robu) <- c('es', 'pval', 'ci_lb', 'ci_up', 'I^2', 'df', 'N', 'k')
+
+# transpose
+effects_robu <- as.data.frame(t(as.matrix(effects_robu)))
+print(effects_robu)
+# save as csv 
+write_csv(effects_robu, paste0(directory,"/Results/Domains_All_hypo.csv"))
+
+```
+
+*Domains | Performance* 
+
+```{r domains Performance, echo=FALSE}
+# Fit RVE intercept model
+
+effects_robu = data.frame(matrix(ncol = 9, nrow = 8))
+model = list()
+
+for(d in 1:length(domains)) {
+  model[[d]] <- robu(formula = y ~ 1, 
+                        data = mlm.perf[mlm.perf$domain==domains[d],],
+                        studynum = ID, 
+                        var.eff.size = v, 
+                        rho = .8, 
+                        small = TRUE)
+  effects_robu[d] <- c(model[[d]]$reg_table$b.r,
+                       model[[d]]$reg_table$prob,
+                       model[[d]]$reg_table$CI.L,
+                       model[[d]]$reg_table$CI.U,
+                       model[[d]]$mod_info$I.2[1],
+                       model[[d]]$reg_table$dfs,
+                       model[[d]]$N,
+                       model[[d]]$M)
+}
+
+colnames(effects_robu) <- domains
+rownames(effects_robu) <- c('es', 'pval', 'ci_lb', 'ci_up', 'I^2', 'df', 'N', 'k')
+
+# transpose
+effects_robu <- as.data.frame(t(as.matrix(effects_robu)))
+print(effects_robu)
+
+write_csv(effects_robu, paste0(directory, "/Results/Domains_Perf_hypo.csv"))
+
+```
+
+*Domains | RT* 
+
+```{r domains RT, echo=FALSE}
+# remove domains Long-Term Memory, Motor Learning and Learning (each has 1 study), and Decision-Making (0 studies)  
+
+domains = c("Working Memory", "Attention", "Executive Control", "Intelligence", "Motor Memory")
+  
+effects_robu = data.frame(matrix(ncol = 5, nrow = 8))
+model = list()
+
+for(d in 1:length(domains)) {
+  model[[d]] <- robu(formula = y ~ 1, 
+                        data = mlm.rt[mlm.rt$domain==domains[d],],
+                        studynum = ID, 
+                        var.eff.size = v, 
+                        rho = .8, 
+                        small = TRUE)
+  effects_robu[d] <- c(model[[d]]$reg_table$b.r,
+                       model[[d]]$reg_table$prob,
+                       model[[d]]$reg_table$CI.L,
+                       model[[d]]$reg_table$CI.U,
+                       model[[d]]$mod_info$I.2[1],
+                       model[[d]]$reg_table$dfs,
+                       model[[d]]$N,
+                       model[[d]]$M)
+}
+
+colnames(effects_robu) <- domains
+row.names(effects_robu) <- c('es', 'pval', 'ci_lb', 'ci_up', 'I^2', 'df', 'N', 'k')
+
+# transpose
+effects_robu <- as.data.frame(t(as.matrix(effects_robu)))
+print(effects_robu)
+
+write_csv(effects_robu, paste0(directory,"/Results/Domains_RT_hypo.csv"))
+```
+
+## Subgroup: Older Adults 
+
+*Older Adults | All*
+```{r older adults All, echo=FALSE}
+model_elderly <- robu(formula = y ~ 1, data= subset(mlm.data, population=="elderly", ), studynum = ID, var.eff.size = v, rho = .8, small = TRUE)
+print(model_elderly)
+sensitivity(model_elderly)
+```
+
+*Older Adults | Performance*
+```{r older adults Performance, echo=FALSE}
+model_elderly <- robu(formula = y ~ 1, data= subset(mlm.perf, population=="elderly"), studynum = ID,  var.eff.size = v, rho = .8, small = TRUE)
+print(model_elderly)
+sensitivity(model_elderly)
+```
+
+*Older Adults | RT*
+```{r older adults RT, echo=FALSE}
+model_elderly <- robu(formula = y ~ 1, data= subset(mlm.rt, population=="elderly"), studynum = ID, var.eff.size = v, rho = .8, small = TRUE)
+print(model_elderly)
+sensitivity(model_elderly)
+```
